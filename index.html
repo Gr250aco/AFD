@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AFD - Dashboard de Sensores</title>
+  <style>
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:#f1f5f9}
+    header{padding:20px;text-align:center;background:#1e293b}
+    h1{margin:0;font-size:1.6rem}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:800px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:#fff;color:#111;padding:16px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid #ddd}
+    th{background:#f1f5f9;text-align:left}
+    tr:hover{background:#f8fafc}
+    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+    .kpi{flex:1;background:#f1f5f9;border-radius:8px;padding:12px;text-align:center}
+    .kpi .label{color:#64748b;font-size:.8rem}
+    .kpi .value{font-size:1.4rem;font-weight:bold}
+    canvas{width:100% !important;height:300px !important}
+    footer{text-align:center;color:#94a3b8;margin:20px;font-size:.85rem}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AFD – Dashboard de Sensores</h1>
+    <p>ESP32 + AHT20 + Supabase + GitHub Pages</p>
+  </header>
+
+  <main class="wrap">
+    <!-- KPIs -->
+    <section class="card">
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Última temperatura</div>
+          <div id="kpi-temp" class="value">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Última humedad</div>
+          <div id="kpi-hum" class="value">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Última lectura</div>
+          <div id="kpi-time" class="value">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gráficas -->
+    <section class="grid">
+      <div class="card">
+        <h3>Temperatura (últimas lecturas)</h3>
+        <canvas id="chartTemp"></canvas>
+      </div>
+      <div class="card">
+        <h3>Humedad (últimas lecturas)</h3>
+        <canvas id="chartHum"></canvas>
+      </div>
+    </section>
+
+    <!-- Tabla -->
+    <section class="card" style="margin-top:16px">
+      <h3>Tabla de lecturas recientes</h3>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Fecha/Hora</th>
+            <th>Device</th>
+            <th>Temp (°C)</th>
+            <th>Humedad (%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>AFD • S
