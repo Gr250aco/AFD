@@ -22,6 +22,7 @@
     .kpi .value{font-size:1.4rem;font-weight:bold}
     canvas{width:100% !important;height:300px !important}
     footer{text-align:center;color:#94a3b8;margin:20px;font-size:.85rem}
+    #status{margin:8px 0;color:#94a3b8}
   </style>
 </head>
 <body>
@@ -31,6 +32,8 @@
   </header>
 
   <main class="wrap">
+    <div id="status">Cargando…</div>
+
     <!-- KPIs -->
     <section class="card">
       <div class="kpis">
@@ -78,4 +81,93 @@
     </section>
   </main>
 
-  <footer>AFD • S
+  <footer>AFD • Supabase + ESP32 • Dashboard</footer>
+
+  <!-- Librerías externas -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <script>
+    // CONFIG DEL PROYECTO
+    const SUPABASE_URL = "https://aefwdtlzqiqdchzyjxeu.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZndkdGx6cWlxZGNoenlqeGV1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA1NDExMDYsImV4cCI6MjA3NjExNzEwNn0.V2MujYNCdQkFe3kj69NUU8pUNyv8zL1lCcgKLJHdnBw";
+    const TABLE = "aht_readings";
+    const DEVICE_FILTER = null; // p. ej. "AFD-esp32-01" si deseas filtrar
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // UI
+    const tbody = document.querySelector("#tbl tbody");
+    const kpiTemp = document.getElementById("kpi-temp");
+    const kpiHum  = document.getElementById("kpi-hum");
+    const kpiTime = document.getElementById("kpi-time");
+    const statusDiv = document.getElementById("status");
+
+    // Gráficas
+    const labels=[], tempData=[], humData=[];
+    const chartTemp=new Chart(document.getElementById("chartTemp"),{
+      type:"line",
+      data:{labels,datasets:[{label:"Temp °C",data:tempData}]},
+      options:{responsive:true,animation:false}
+    });
+    const chartHum=new Chart(document.getElementById("chartHum"),{
+      type:"line",
+      data:{labels,datasets:[{label:"Humedad %",data:humData}]},
+      options:{responsive:true,animation:false}
+    });
+
+    function fmtTime(iso){ return new Date(iso).toLocaleString(); }
+    function updateKPIs(r){
+      kpiTemp.textContent=`${Number(r.temperature_c).toFixed(2)} °C`;
+      kpiHum.textContent =`${Number(r.humidity_pct).toFixed(2)} %`;
+      kpiTime.textContent= fmtTime(r.created_at);
+    }
+    function addRow(r){
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td>${fmtTime(r.created_at)}</td>
+                    <td>${r.device_id}</td>
+                    <td>${Number(r.temperature_c).toFixed(2)}</td>
+                    <td>${Number(r.humidity_pct).toFixed(2)}</td>`;
+      tbody.prepend(tr);
+      while (tbody.children.length>200) tbody.removeChild(tbody.lastChild);
+    }
+    function addChart(r){
+      labels.push(fmtTime(r.created_at));
+      tempData.push(Number(r.temperature_c));
+      humData.push(Number(r.humidity_pct));
+      if (labels.length>200){ labels.shift(); tempData.shift(); humData.shift(); }
+      chartTemp.update(); chartHum.update();
+    }
+
+    async function cargar(){
+      statusDiv.textContent="Cargando lecturas…";
+      let query = sb.from(TABLE)
+        .select("created_at, device_id, temperature_c, humidity_pct")
+        .order("created_at",{ascending:false})
+        .limit(200);
+      if (DEVICE_FILTER) query = query.eq("device_id", DEVICE_FILTER);
+
+      const { data, error } = await query;
+      if (error){ statusDiv.textContent = "Error: "+error.message; console.error(error); return; }
+
+      statusDiv.textContent = `Lecturas cargadas: ${data.length}`;
+      tbody.innerHTML="";
+      data.forEach(addRow);
+      [...data].reverse().forEach(addChart);
+      if (data[0]) updateKPIs(data[0]);
+    }
+
+    function realtime(){
+      sb.channel("aht_readings-realtime")
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:TABLE},payload=>{
+          const r = payload.new;
+          if (DEVICE_FILTER && r.device_id !== DEVICE_FILTER) return;
+          addRow(r); addChart(r); updateKPIs(r);
+        })
+        .subscribe((status)=>{ statusDiv.textContent = "Realtime: " + status; });
+    }
+
+    (async()=>{ await cargar(); realtime(); })();
+  </script>
+</body>
+</html>
