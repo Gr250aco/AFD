@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AFD – Dashboard ESP32 + Supabase</title>
+  <style>
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#0f172a;color:#f1f5f9}
+    header{padding:20px;text-align:center;background:#1e293b}
+    h1{margin:0;font-size:1.6rem}
+    .wrap{max-width:1100px;margin:20px auto;padding:0 16px}
+    .grid{display:grid;grid-template-columns:1fr;gap:16px}
+    @media(min-width:800px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:#fff;color:#111;padding:16px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px 10px;border-bottom:1px solid #ddd}
+    th{background:#f1f5f9;text-align:left}
+    tr:hover{background:#f8fafc}
+    .kpis{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+    .kpi{flex:1;background:#f1f5f9;border-radius:8px;padding:12px;text-align:center}
+    .kpi .label{color:#64748b;font-size:.8rem}
+    .kpi .value{font-size:1.4rem;font-weight:bold}
+    canvas{width:100% !important;height:300px !important}
+    footer{text-align:center;color:#94a3b8;margin:20px;font-size:.85rem}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AFD – Dashboard de Lecturas AHT20</h1>
+    <p>ESP32 → Supabase → GitHub Pages</p>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Última temperatura</div>
+          <div id="kpi-temp" class="value">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Última humedad</div>
+          <div id="kpi-hum" class="value">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Última lectura</div>
+          <div id="kpi-time" class="value">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <div class="card">
+        <h3>Temperatura (últimas lecturas)</h3>
+        <canvas id="chartTemp"></canvas>
+      </div>
+      <div class="card">
+        <h3>Humedad (últimas lecturas)</h3>
+        <canvas id="chartHum"></canvas>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h3>Tabla de lecturas</h3>
+      <table id="tbl">
+        <thead>
+          <tr>
+            <th>Fecha/Hora</th>
+            <th>Device</th>
+            <th>Temp (°C)</th>
+            <th>Humedad (%)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>AFD • Supabase + ESP32 • Dashboard</footer>
+
+  <!-- Supabase JS y Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <script>
+    // Configura tus credenciales
+    const SUPABASE_URL = "https://aefwdtlzqiqdchzyjxeu.supabase.co";
+    const SUPABASE_ANON_KEY = "PEGAR_AQUI_TU_ANON_KEY"; // <-- tu anon key sin <>
+    const TABLE = "aht_readings";
+
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const tbody = document.querySelector("#tbl tbody");
+    const kpiTemp = document.getElementById("kpi-temp");
+    const kpiHum = document.getElementById("kpi-hum");
+    const kpiTime = document.getElementById("kpi-time");
+
+    // Chart.js
+    const labels = [], tempData = [], humData = [];
+    const chartTemp = new Chart(document.getElementById("chartTemp"), {
+      type: "line",
+      data: { labels, datasets: [{label:"Temp °C", data:tempData, borderColor:"#ef4444"}] },
+      options:{responsive:true,animation:false}
+    });
+    const chartHum = new Chart(document.getElementById("chartHum"), {
+      type: "line",
+      data: { labels, datasets: [{label:"Humedad %", data:humData, borderColor:"#3b82f6"}] },
+      options:{responsive:true,animation:false}
+    });
+
+    function fmtTime(iso){return new Date(iso).toLocaleString();}
+
+    function updateKPIs(r){
+      kpiTemp.textContent = `${Number(r.temperature_c).toFixed(2)} °C`;
+      kpiHum.textContent  = `${Number(r.humidity_pct).toFixed(2)} %`;
+      kpiTime.textContent = fmtTime(r.created_at);
+    }
+
+    function addRow(r){
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${fmtTime(r.created_at)}</td>
+                      <td>${r.device_id}</td>
+                      <td>${Number(r.temperature_c).toFixed(2)}</td>
+                      <td>${Number(r.humidity_pct).toFixed(2)}</td>`;
+      tbody.prepend(tr);
+    }
+
+    function addChart(r){
+      labels.push(fmtTime(r.created_at));
+      tempData.push(r.temperature_c);
+      humData.push(r.humidity_pct);
+      if (labels.length > 100){labels.shift();tempData.shift();humData.shift();}
+      chartTemp.update();
+      chartHum.update();
+    }
+
+    async function cargar(){
+      const {data, error} = await sb.from(TABLE)
+        .select("*")
+        .order("created_at",{ascending:false})
+        .limit(50);
+      if (error){console.error(error);return;}
+      tbody.innerHTML="";
+      data.forEach(addRow);
+      [...data].reverse().forEach(addChart);
+      if (data[0]) updateKPIs(data[0]);
+    }
+
+    function realtime(){
+      sb.channel("aht_readings")
+        .on("postgres_changes",{event:"INSERT",schema:"public",table:TABLE},payload=>{
+          const r = payload.new;
+          addRow(r); addChart(r); updateKPIs(r);
+        }).subscribe();
+    }
+
+    (async()=>{
+      await cargar();
+      realtime();
+    })();
+  </script>
+</body>
+</html>
